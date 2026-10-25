@@ -17,7 +17,7 @@ jobs:
     defaults:
       run:
         shell: pwsh
-        working-directory: ${{ runner.temp }}/MakoFO4HDR/fo4-mako-hdr-main
+        working-directory: ${{ github.workspace }}/fo4-mako-hdr-main
     steps:
       - uses: actions/checkout@v4
 
@@ -25,7 +25,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $sourceRoot = Join-Path $env:RUNNER_TEMP 'MakoFO4HDR'
+          $sourceRoot = $env:GITHUB_WORKSPACE
           Expand-Archive -LiteralPath 'MakoFO4HDR-build-source.zip' -DestinationPath $sourceRoot
           $project = Join-Path $sourceRoot 'fo4-mako-hdr-main'
           Push-Location $project
@@ -86,6 +86,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: MakoFO4HDR-Windows-x64
-          path: dist/universal/Data/F4SE/Plugins/
+          path: fo4-mako-hdr-main/dist/universal/Data/F4SE/Plugins/
           if-no-files-found: error
           retention-days: 14
