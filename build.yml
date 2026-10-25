@@ -1,0 +1,91 @@
+name: Build MakoFO4HDR
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 60
+    env:
+      FO4HDR_RUNTIME: "1.10.163"
+      FO4HDR_BUILD_MODE: releasedbg
+      FO4HDR_TOOLCHAIN_POLICY: hosted-ci
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/MakoFO4HDR/fo4-mako-hdr-main
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack source and initialize its pinned submodule
+        working-directory: ${{ github.workspace }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sourceRoot = Join-Path $env:RUNNER_TEMP 'MakoFO4HDR'
+          Expand-Archive -LiteralPath 'MakoFO4HDR-build-source.zip' -DestinationPath $sourceRoot
+          $project = Join-Path $sourceRoot 'fo4-mako-hdr-main'
+          Push-Location $project
+          try {
+            git init -b build
+            git config user.name 'GitHub Actions'
+            git config user.email 'actions@github.com'
+            New-Item -ItemType Directory -Path lib -Force | Out-Null
+            git add --all
+            git commit -m 'Prepare source archive for build'
+            $lock = Get-Content versions.lock.json -Raw | ConvertFrom-Json
+            git update-index --add --cacheinfo "160000,$($lock.commonlib.commit),lib/commonlibf4"
+            git -c core.autocrlf=false -c core.eol=lf submodule update --init --recursive -- lib/commonlibf4
+            if ($LASTEXITCODE -ne 0) { throw 'Pinned CommonLibF4 checkout failed.' }
+          }
+          finally { Pop-Location }
+
+      - name: Install pinned XMake
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $lock = Get-Content versions.lock.json -Raw | ConvertFrom-Json
+          $tools = Join-Path $env:RUNNER_TEMP 'fo4hdr-tools'
+          New-Item -ItemType Directory -Path $tools -Force | Out-Null
+          $archive = Join-Path $tools 'xmake.zip'
+          $version = $lock.toolchain.observed.xmake
+          Invoke-WebRequest -Uri "https://github.com/xmake-io/xmake/releases/download/v$version/xmake-v$version.win64.zip" -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash -ine $lock.toolchain.hostedCi.xmakeArchiveSha256) { throw 'XMake checksum mismatch.' }
+          Expand-Archive -LiteralPath $archive -DestinationPath $tools
+          (Join-Path $tools 'xmake') >> $env:GITHUB_PATH
+          "FO4HDR_PWSH=$((Get-Process -Id $PID).Path)" >> $env:GITHUB_ENV
+          "XMAKE_PKG_INSTALLDIR=$(Join-Path $env:RUNNER_TEMP 'fo4hdr-xmake/packages')" >> $env:GITHUB_ENV
+          "XMAKE_PKG_CACHEDIR=$(Join-Path $env:RUNNER_TEMP 'fo4hdr-xmake/downloads')" >> $env:GITHUB_ENV
+
+      - name: Initialize x64 MSVC and locked Windows SDK
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $lock = Get-Content versions.lock.json -Raw | ConvertFrom-Json
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $major = [int]$lock.toolchain.observed.visualStudio.productLine
+          $instances = & $vswhere -latest -products '*' -version "[$major.0,$($major + 1).0)" -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or -not $instances) { throw 'Required Visual Studio installation not found.' }
+          $instance = @($instances)[0]
+          $before = @{}
+          Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
+          Import-Module (Join-Path $instance.installationPath 'Common7/Tools/Microsoft.VisualStudio.DevShell.dll')
+          $family = $lock.toolchain.hostedCi.servicingFamilies.msvcTools
+          $sdk = $lock.toolchain.observed.windowsSdk.version
+          Enter-VsDevShell -VsInstanceId $instance.instanceId -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64 -vcvars_ver=$family -winsdk=$sdk"
+          foreach ($entry in Get-ChildItem Env:) { if ($entry.Value -ne $before[$entry.Name]) { "$($entry.Name)=$($entry.Value)" >> $env:GITHUB_ENV } }
+
+      - name: Verify build toolchain and pinned libraries
+        run: .\scripts\bootstrap.ps1
+
+      - name: Build and stage DLL
+        run: .\scripts\build.ps1 -Mode $env:FO4HDR_BUILD_MODE -DisableFrameTrace -AllowUnvalidatedRuntime
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MakoFO4HDR-Windows-x64
+          path: dist/universal/Data/F4SE/Plugins/
+          if-no-files-found: error
+          retention-days: 14
