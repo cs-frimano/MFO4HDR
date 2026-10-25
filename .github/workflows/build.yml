@@ -19,7 +19,7 @@ jobs:
         shell: pwsh
         working-directory: ${{ github.workspace }}/fo4-mako-hdr-main
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Unpack source and initialize its pinned submodule
         working-directory: ${{ github.workspace }}
@@ -83,7 +83,7 @@ jobs:
         run: .\scripts\build.ps1 -Mode $env:FO4HDR_BUILD_MODE -DisableFrameTrace -AllowUnvalidatedRuntime
 
       - name: Upload plugin artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: MakoFO4HDR-Windows-x64
           path: fo4-mako-hdr-main/dist/universal/Data/F4SE/Plugins/
