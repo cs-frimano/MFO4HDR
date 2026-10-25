@@ -26,7 +26,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $sourceRoot = $env:GITHUB_WORKSPACE
-          Expand-Archive -LiteralPath 'MakoFO4HDR-build-source.zip' -DestinationPath $sourceRoot
+          Expand-Archive -LiteralPath 'MakoFO4HDR-build-source-v2.zip' -DestinationPath $sourceRoot
           $project = Join-Path $sourceRoot 'fo4-mako-hdr-main'
           Push-Location $project
           try {
