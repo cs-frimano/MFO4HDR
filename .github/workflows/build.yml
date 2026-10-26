@@ -89,3 +89,8 @@ jobs:
           path: fo4-mako-hdr-main/dist/universal/Data/F4SE/Plugins/
           if-no-files-found: error
           retention-days: 14
+
+          name: MakoFO4HDR-Windows-x64
+          path: fo4-mako-hdr-main/dist/universal/Data/F4SE/Plugins/
+          if-no-files-found: error
+          retention-days: 14
